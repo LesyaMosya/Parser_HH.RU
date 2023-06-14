@@ -2,10 +2,12 @@ import re
 import requests
 from bs4 import BeautifulSoup
 
-url = 'https://spb.hh.ru/vacancies/programmist?hhtmFromLabel=rainbow_profession&hhtmFrom=main'
+url = 'https://spb.hh.ru/vacancies/programmist'
 
+headers = {'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ''AppleWebKit/537.36 (KHTML, like Gecko) '
+                         'Chrome/108.0.0.0 ' 'YaBrowser/23.5.2.625 ' 'Yowser/2.5 ' 'Safari/537.36'}
 params = {'page': 0}
-pages = 2
+pages = 1
 
 sumSalary = 0
 countVacancies = 0
@@ -62,31 +64,22 @@ def ConvertEUR(salaryEUR):
 
 
 while params['page'] < pages:
-    response = requests.get(url, params=params, headers={'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-                                                                       'AppleWebKit/537.36 (KHTML, like Gecko) '
-                                                                       'Chrome/108.0.0.0 '
-                                                                       'YaBrowser/23.1.1.1138 '
-                                                                       'Yowser/2.5 '
-                                                                       'Safari/537.36'})
+    response = requests.get(url, params=params, headers=headers)
     soup = BeautifulSoup(response.text, "html.parser")
-    wages = soup.find_all('span', class_='bloko-header-section-3')
+    countVacancies = soup.find_all("span", {'data-qa': 'vacancies-total-found'})
 
     patternCountVacancies = r'[^0-9]'
-    countVacancies = int(re.sub(patternCountVacancies, "", wages[0].text))
+    countVacancies = int(re.sub(patternCountVacancies, "", countVacancies[0].text))
 
-    for step in range(1, len(wages)):
+    wages = soup.find_all("span", {'data-qa': 'vacancy-serp__vacancy-compensation'})
+    for step in range(0, len(wages)):
         wage = wages[step].text
-        print(CheckStringWage(wage))
+        CheckStringWage(wage)
         sumSalary += CheckStringWage(wage)
         count += 1
 
-    last_page_num = int(soup.find_all('a', class_='bloko-button')[-2].text)
-    pages = last_page_num if pages < last_page_num else pages
+    pages = int(soup.find_all("a", {'data-qa': 'pager-page'})[-1].text)
     params['page'] += 1
 
-
-avgSalary = sumSalary/count
-print("Средняя зарплата по вакансии 'программист'")
-print(avgSalary)
-
-
+avgSalary = int(sumSalary / count)
+print("Средняя зарплата по вакансии: " + str(avgSalary) + " рублей")
