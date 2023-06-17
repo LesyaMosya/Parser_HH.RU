@@ -1,17 +1,8 @@
 import re
 import requests
 from bs4 import BeautifulSoup
-
-url = 'https://spb.hh.ru/vacancies/programmist'
-
-headers = {'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ''AppleWebKit/537.36 (KHTML, like Gecko) '
-                         'Chrome/108.0.0.0 ' 'YaBrowser/23.5.2.625 ' 'Yowser/2.5 ' 'Safari/537.36'}
-params = {'page': 0}
-pages = 1
-
-sumSalary = 0
-countVacancies = 0
-count = 0
+from getpass import getpass
+from mysql.connector import connect, Error
 
 
 def CheckStringWage(stringWage):
@@ -63,23 +54,43 @@ def ConvertEUR(salaryEUR):
     return salaryEUR
 
 
-while params['page'] < pages:
+url = 'https://spb.hh.ru/vacancies/programmist?page=0'
+headers = {'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
+                         'Chrome/74.0.3729.169 Safari/537.36'}
+params = {'page': 0}
+lastPage = 2
+
+sumSalary = 0
+countVacancies = 0
+
+while params['page'] < lastPage:
     response = requests.get(url, params=params, headers=headers)
-    soup = BeautifulSoup(response.text, "html.parser")
-    countVacancies = soup.find_all("span", {'data-qa': 'vacancies-total-found'})
+    soup = BeautifulSoup(response.text, 'html.parser')
 
-    patternCountVacancies = r'[^0-9]'
-    countVacancies = int(re.sub(patternCountVacancies, "", countVacancies[0].text))
+    # countVacancies = soup.find_all("span", {'data-qa': 'vacancies-total-found'})
+    # patternCountVacancies = r'[^0-9]'
+    # countVacancies = int(re.sub(patternCountVacancies, "", countVacancies[0].text))
 
-    wages = soup.find_all("span", {'data-qa': 'vacancy-serp__vacancy-compensation'})
+    wages = soup.find_all('span', attrs={'data-qa': 'vacancy-serp__vacancy-compensation'})
     for step in range(0, len(wages)):
         wage = wages[step].text
         CheckStringWage(wage)
         sumSalary += CheckStringWage(wage)
-        count += 1
+        countVacancies += 1
 
-    pages = int(soup.find_all("a", {'data-qa': 'pager-page'})[-1].text)
+    listPages = soup.find_all('a', attrs={'data-qa': 'pager-page'})
+    lastPage = int(listPages.pop().text)
     params['page'] += 1
 
-avgSalary = int(sumSalary / count)
+avgSalary = int(sumSalary / countVacancies)
 print("Средняя зарплата по вакансии: " + str(avgSalary) + " рублей")
+
+try:
+    with connect(
+            host="localhost",
+            user=input("Имя пользователя: "),
+            password=getpass("Пароль: "),
+    ) as connection:
+        print(connection)
+except Error as e:
+    print(e)
