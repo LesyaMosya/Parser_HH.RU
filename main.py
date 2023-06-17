@@ -1,11 +1,10 @@
 import re
 import requests
 from bs4 import BeautifulSoup
-from getpass import getpass
-from mysql.connector import connect, Error
+import pymysql
 
 
-def CheckStringWage(stringWage):
+def checkStringWage(stringWage):
     patternSearchRusLetters = r'[^0-9+–+A-Z]'
     stringWage = re.sub(patternSearchRusLetters, "", stringWage)
 
@@ -16,19 +15,19 @@ def CheckStringWage(stringWage):
     patternInterval = r'–'
     matchInterval = re.search(patternInterval, stringWage)
 
-    stringWage = SearchNumbers(stringWage)
+    stringWage = searchNumbers(stringWage)
     if matchInterval is not None:
-        stringWage = CalculateSalaryRange(stringWage)
+        stringWage = calculateSalaryRange(stringWage)
     else:
         stringWage = float(stringWage[0])
     if matchEUR is not None:
-        stringWage = ConvertEUR(stringWage)
+        stringWage = convertEUR(stringWage)
     if matchUSD is not None:
-        stringWage = ConvertUSD(stringWage)
+        stringWage = convertUSD(stringWage)
     return stringWage
 
 
-def CalculateSalaryRange(salaryRange):
+def calculateSalaryRange(salaryRange):
     salaryFrom = int(salaryRange[0])
     salaryTo = int(salaryRange[1])
     salary = (salaryFrom + salaryTo) / 2
@@ -36,19 +35,19 @@ def CalculateSalaryRange(salaryRange):
     return salary
 
 
-def SearchNumbers(salaryRange):
+def searchNumbers(salaryRange):
     patternSearchNumber = r'\d{1,}'
     salaryRange = re.findall(patternSearchNumber, salaryRange)
     return salaryRange
 
 
-def ConvertUSD(salaryUSD):
+def convertUSD(salaryUSD):
     salaryUSD *= 74.71
     salaryUSD = round(salaryUSD, 0)
     return salaryUSD
 
 
-def ConvertEUR(salaryEUR):
+def convertEUR(salaryEUR):
     salaryEUR *= 79.57
     salaryEUR = round(salaryEUR, 0)
     return salaryEUR
@@ -67,15 +66,11 @@ while params['page'] < lastPage:
     response = requests.get(url, params=params, headers=headers)
     soup = BeautifulSoup(response.text, 'html.parser')
 
-    # countVacancies = soup.find_all("span", {'data-qa': 'vacancies-total-found'})
-    # patternCountVacancies = r'[^0-9]'
-    # countVacancies = int(re.sub(patternCountVacancies, "", countVacancies[0].text))
-
     wages = soup.find_all('span', attrs={'data-qa': 'vacancy-serp__vacancy-compensation'})
     for step in range(0, len(wages)):
         wage = wages[step].text
-        CheckStringWage(wage)
-        sumSalary += CheckStringWage(wage)
+        checkStringWage(wage)
+        sumSalary += checkStringWage(wage)
         countVacancies += 1
 
     listPages = soup.find_all('a', attrs={'data-qa': 'pager-page'})
@@ -85,12 +80,28 @@ while params['page'] < lastPage:
 avgSalary = int(sumSalary / countVacancies)
 print("Средняя зарплата по вакансии: " + str(avgSalary) + " рублей")
 
-try:
-    with connect(
-            host="localhost",
-            user=input("Имя пользователя: "),
-            password=getpass("Пароль: "),
-    ) as connection:
-        print(connection)
-except Error as e:
-    print(e)
+
+def mySQLConnect():
+    # To connect MySQL database
+    try:
+        connection = pymysql.connect(
+            host='localhost',
+            user='LESYA-S-POLESYA/vaska',
+            # password="pass",
+            db='Salary_HH',
+        )
+        print("Successfully connected...")
+        print("#" * 20)
+        try:
+            with connection.cursor() as cursor:
+                insert_query = "INSERT INTO `Avg_Salary` (Date, Salary) VALUES (date.today(), avgSalary);"
+                cursor.execute(insert_query)
+                connection.commit()
+        finally:
+            connection.close()
+    except Exception as ex:
+        print("Connection refused...")
+        print(ex)
+
+
+mySQLConnect()
