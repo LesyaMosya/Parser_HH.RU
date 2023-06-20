@@ -1,7 +1,40 @@
 import re
+from datetime import date
 import requests
 from bs4 import BeautifulSoup
-import pymysql
+import pyodbc
+from apscheduler.schedulers.background import BackgroundScheduler
+
+
+def mainFunction():
+    url = 'https://spb.hh.ru/vacancies/programmist'
+    headers = {'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
+                             'Chrome/74.0.3729.169 Safari/537.36'}
+    params = {'page': 0}
+    lastPage = 2
+
+    sumSalary = 0
+    countVacancies = 0
+
+    while params['page'] < lastPage:
+        response = requests.get(url, params=params, headers=headers)
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        wages = soup.find_all('span', attrs={'data-qa': 'vacancy-serp__vacancy-compensation'})
+        for step in range(0, len(wages)):
+            wage = wages[step].text
+            checkStringWage(wage)
+            sumSalary += checkStringWage(wage)
+            countVacancies += 1
+
+        listPages = soup.find_all('a', attrs={'data-qa': 'pager-page'})
+        lastPage = int(listPages.pop().text)
+        params['page'] += 1
+
+    avgSalary = int(sumSalary / countVacancies)
+    print("Средняя зарплата по вакансии: " + str(avgSalary) + " рублей")
+
+    mySQLConnect(avgSalary)
 
 
 def checkStringWage(stringWage):
@@ -53,55 +86,26 @@ def convertEUR(salaryEUR):
     return salaryEUR
 
 
-url = 'https://spb.hh.ru/vacancies/programmist?page=0'
-headers = {'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
-                         'Chrome/74.0.3729.169 Safari/537.36'}
-params = {'page': 0}
-lastPage = 2
-
-sumSalary = 0
-countVacancies = 0
-
-while params['page'] < lastPage:
-    response = requests.get(url, params=params, headers=headers)
-    soup = BeautifulSoup(response.text, 'html.parser')
-
-    wages = soup.find_all('span', attrs={'data-qa': 'vacancy-serp__vacancy-compensation'})
-    for step in range(0, len(wages)):
-        wage = wages[step].text
-        checkStringWage(wage)
-        sumSalary += checkStringWage(wage)
-        countVacancies += 1
-
-    listPages = soup.find_all('a', attrs={'data-qa': 'pager-page'})
-    lastPage = int(listPages.pop().text)
-    params['page'] += 1
-
-avgSalary = int(sumSalary / countVacancies)
-print("Средняя зарплата по вакансии: " + str(avgSalary) + " рублей")
-
-
-def mySQLConnect():
-    # To connect MySQL database
+def mySQLConnect(avgSalary):
     try:
-        connection = pymysql.connect(
-            host='localhost',
-            user='LESYA-S-POLESYA/vaska',
-            # password="pass",
-            db='Salary_HH',
-        )
+        conn = pyodbc.connect(driver='{ODBC Driver 17 for SQL Server}',
+                              server='(local)',
+                              database='Salary_HH',
+                              trusted_connection='yes')
         print("Successfully connected...")
         print("#" * 20)
         try:
-            with connection.cursor() as cursor:
-                insert_query = "INSERT INTO `Avg_Salary` (Date, Salary) VALUES (date.today(), avgSalary);"
-                cursor.execute(insert_query)
-                connection.commit()
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO Avg_Salary(date_of_unloading, salary) VALUES (?,?)", (date.today(), avgSalary))
+            conn.commit()
         finally:
-            connection.close()
+            conn.close()
     except Exception as ex:
         print("Connection refused...")
         print(ex)
 
 
-mySQLConnect()
+scheduler = BlockingScheduler()
+scheduler.add_job(mainFunction(), 'cron', hour=12)
+scheduler.start()
+
